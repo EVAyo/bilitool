@@ -1,0 +1,877 @@
+/**
+ * 抽奖号的日常2: 如何专业地评论区开奖
+ *
+ * @author [盛百凡]{@link https://space.bilibili.com/14064125}
+ * @version 1.3.2
+ * @see [Weighted random sampling with a reservoir]{@link https://doi.org/10.1016/j.ipl.2005.11.003}
+ */
+(async () => {
+  'use strict';
+  // 暂停
+  const wait = async delay => new Promise(resolve => setTimeout(resolve, delay));
+
+  // 清空控制台
+  await wait(0);
+  console.clear();
+
+  // 用户配置
+  const USER_CONFIG = {
+    // 本地保存所有评论
+    SAVE_COMMENTS: true,
+    // 单用户累计评论数上限
+    MAX_REPEAT: 5,
+    // 用户等级权重
+    LEVEL_WEIGHT: {Lv0: 0, Lv1: 0, Lv2: 0, Lv3: 0.5, Lv4: 1, Lv5: 1, Lv6: 1},
+    // 勋章等级权重
+    MEDAL_WEIGHT: {
+      Lv_0: 1,
+      Lv_1: 1, Lv_2: 1, Lv_3: 1, Lv_4: 1, Lv_5: 1, Lv_6: 1, Lv_7: 1, Lv_8: 1, Lv_9: 1, Lv10: 1,
+      Lv11: 1, Lv12: 1, Lv13: 1, Lv14: 1, Lv15: 1, Lv16: 1, Lv17: 1, Lv18: 1, Lv19: 1, Lv20: 1,
+      Lv21: 1, Lv22: 1, Lv23: 1, Lv24: 1, Lv25: 1, Lv26: 1, Lv27: 1, Lv28: 1, Lv29: 1, Lv30: 1,
+      Lv31: 1, Lv32: 1, Lv33: 1, Lv34: 1, Lv35: 1, Lv36: 1, Lv37: 1, Lv38: 1, Lv39: 1, Lv40: 1
+    },
+    // 会员类型权重
+    VIP_WEIGHT: {普通: 1, 月度: 1, 年度: 1}
+  };
+
+  // 系统配置
+  const SYS_CONFIG = {
+    // API请求间隔(毫秒)
+    API_INTERVAL: 250
+  };
+
+  // 控制台颜色
+  const COLOR = {
+    RED: '#EE230D',
+    PINK: '#FF8CC6',
+    ORANGE: '#FF9201',
+    GREEN: '#1DB100',
+    BLUE: '#02A2FF',
+    GRAY: '#D6D5D5'
+  };
+
+  // 格式百分比
+  const stylePercent = (num, digits) => {
+    if (num < 0 || num > 1) {
+      throw `百分比[${num}]必须在[0, 1]之间`;
+    }
+    const maxLen = digits === 0 ? 3 : digits + 4;
+    if (num === 0) {
+      return {text: 'N/A'.padStart(maxLen, ' '), css: `color:${COLOR.GRAY}`};
+    }
+    return {text: (100 * num).toFixed(digits).padStart(maxLen, ' '), css: ''};
+  };
+
+  // 格式整数
+  const styleInt = (num, maxLen, color) => ({text: num.toString().padStart(maxLen, ' '), css: color === undefined ? '' : `color:${color}`});
+
+  // 格式A(用户等级 认证类型 会员类型)
+  const styleA = (words, color, key) => ({key: key, text: words[0], css: `border-radius:3px;color:#FFFFFF;background:${color};padding:1px`});
+
+  // 格式B(勋章等级)
+  const styleB = (words, color, key) => {
+    const style = {
+      key: key,
+      prefix: {text: words[0], css: `border-radius:3px 0 0 3px;color:#FFFFFF;background:${color};padding:1px 0 1px 1px`},
+      main: {text: words[1], css: `border-radius:0 3px 3px 0;border-style:solid;border-width:1px;border-color:${color};color:${color}`}
+    };
+    if (words[1].length === 1) {
+      style.main.css += ';padding:0 0.5ch';
+    }
+    return style;
+  };
+
+  // 格式捕捉器
+  const styleHandler = (style, prefix) => ({
+    get(target, prop, receiver) {
+      const origin = Reflect.get(target, prop, receiver);
+      if (typeof prop === 'string' && Reflect.has(target, prop) && !Number.isNaN(+prop)) {
+        if (prefix === undefined) {
+          return style([origin[0]], origin[1], origin[0]);
+        }
+        return style([prefix, prop], origin[1], origin[0]);
+      }
+      return origin;
+    }
+  });
+
+  // 控制台格式化
+  const consoleFormat = (styles, separator = '') => {
+    // 转义
+    const escape = msg => {
+      if (msg === null || msg === undefined) {
+        return `%c${msg}`;
+      }
+      return '%c' + msg.toString().replaceAll('%', '%%');
+    };
+    const text = [];
+    const css = [];
+    for (const s of styles) {
+      if (s === null || s === undefined || s === '') {
+        continue;
+      }
+      if (typeof s === 'string') {
+        text.push(escape(s));
+        css.push('');
+      } else if (s.main === undefined) {
+        text.push(escape(s.text));
+        css.push(s.css);
+      } else if (s.prefix !== undefined) {
+        text.push(escape(s.prefix.text) + escape(s.main.text));
+        css.push(s.prefix.css, s.main.css);
+      } else {
+        throw `格式错误 ${styles}`;
+      }
+      text.push(escape(separator));
+      css.push('');
+    }
+    return {text: text.join(''), css: css};
+  };
+
+  // 图标格式
+  const STYLE = {
+    // 用户等级
+    LEVEL: new Proxy([
+      ['Lv0', '#BFBFBF'],
+      ['Lv1', '#BFBFBF'],
+      ['Lv2', '#95DDB2'],
+      ['Lv3', '#92D1E5'],
+      ['Lv4', '#FFB37C'],
+      ['Lv5', '#FF6C00'],
+      ['Lv6', '#FF0000']
+    ], styleHandler(styleA)),
+    // 勋章等级
+    MEDAL: new Proxy([
+      ['Lv_0', '#BFBFBF'],
+      ['Lv_1', '#5C968E'], ['Lv_2', '#5C968E'], ['Lv_3', '#5C968E'], ['Lv_4', '#5C968E'],
+      ['Lv_5', '#5D7B9E'], ['Lv_6', '#5D7B9E'], ['Lv_7', '#5D7B9E'], ['Lv_8', '#5D7B9E'],
+      ['Lv_9', '#8D7CA6'], ['Lv10', '#8D7CA6'], ['Lv11', '#8D7CA6'], ['Lv12', '#8D7CA6'],
+      ['Lv13', '#BE6686'], ['Lv14', '#BE6686'], ['Lv15', '#BE6686'], ['Lv16', '#BE6686'],
+      ['Lv17', '#C79D24'], ['Lv18', '#C79D24'], ['Lv19', '#C79D24'], ['Lv20', '#C79D24'],
+      ['Lv21', '#1A544B'], ['Lv22', '#1A544B'], ['Lv23', '#1A544B'], ['Lv24', '#1A544B'],
+      ['Lv25', '#06154C'], ['Lv26', '#06154C'], ['Lv27', '#06154C'], ['Lv28', '#06154C'],
+      ['Lv29', '#2D0855'], ['Lv30', '#2D0855'], ['Lv31', '#2D0855'], ['Lv32', '#2D0855'],
+      ['Lv33', '#7A0423'], ['Lv34', '#7A0423'], ['Lv35', '#7A0423'], ['Lv36', '#7A0423'],
+      ['Lv37', '#FF610B'], ['Lv38', '#FF610B'], ['Lv39', '#FF610B'], ['Lv40', '#FF610B']
+    ], styleHandler(styleB, '粉丝')),
+    // 认证类型
+    OFFICIAL: new Proxy([
+      ['普通', '#BFBFBF'],
+      ['个人', '#F6C851'],
+      ['企业', '#6FC4FA']
+    ], styleHandler(styleA)),
+    // 会员类型
+    VIP: new Proxy([
+      ['普通', '#BFBFBF'],
+      ['月度', '#FDB8CC'],
+      ['年度', '#FB7299']
+    ], styleHandler(styleA))
+  };
+
+  // 日志
+  const LOG = [];
+
+  // 日志记录器
+  const LOGGER = {
+    level: 0,
+    plain_(msg) {
+      if (msg === null || msg === undefined) {
+        return `${msg}`;
+      }
+      return msg.toString().replaceAll('%c', '').replaceAll('%%', '%');
+    },
+    log_(msg) {
+      LOG.push(this.plain_(msg));
+    },
+    group_(msg) {
+      this.level++;
+      LOG.push(`${'#'.repeat(this.level)} ${this.plain_(msg)}`);
+    },
+    log(msg, ...params) {
+      this.log_(msg);
+      console.log(msg, ...params);
+    },
+    table(data, properties) {
+      this.log_('(暂不支持表格)');
+      console.table(data, properties);
+    },
+    group(msg, ...params) {
+      this.group_(msg);
+      console.group(msg, ...params);
+    },
+    groupCollapsed(msg, ...params) {
+      this.group_(msg);
+      console.groupCollapsed(msg, ...params);
+    },
+    groupEnd() {
+      if (this.level > 0) {
+        this.level--;
+        if (this.level === 0) {
+          LOG.push('');
+        }
+      }
+      console.groupEnd();
+    }
+  };
+
+  // 比较数字
+  const compareInt = (v1, v2) => v1 < v2 ? -1 : (v1 === v2 ? 0 : 1);
+
+  // 比较器
+  const comparator = (...extracts) => (c1, c2) => {
+    for (const ext of extracts) {
+      const res = compareInt(ext(c1), ext(c2));
+      if (res !== 0) {
+        return res;
+      }
+    }
+    return 0;
+  };
+
+  // 格式化时间
+  const formatTime = unix => {
+    const d = new Date(unix * 1000);
+    const year = d.getFullYear().toString();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const date = d.getDate().toString().padStart(2, '0');
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const seconds = d.getSeconds().toString().padStart(2, '0');
+    return `${year}-${month}-${date} ${hours}:${minutes}:${seconds}`;
+  };
+
+  // 检查整数
+  const ckInt = value => {
+    if (!Number.isInteger(value)) {
+      throw `[${value}]非整数`;
+    }
+    return value;
+  };
+
+  // 检查字符串
+  const ckStr = value => {
+    if (typeof value !== 'string') {
+      throw `[${value}]非字符串`;
+    }
+    return value;
+  };
+
+  // 检查时间
+  const ckUnix = unix => {
+    ckInt(unix);
+    if (unix.toString().length !== 10) {
+      throw `时间[${unix}]必须为10位数`;
+    }
+    return unix;
+  };
+
+  // 检查用户等级
+  const ckLevel = level => {
+    ckInt(level);
+    if (level < 0 || level > 6) {
+      throw `用户等级[${level}]必须在[0, 6]之间`;
+    }
+    return level;
+  };
+
+  // 检查勋章等级
+  const ckMedal = medal => {
+    ckInt(medal);
+    if (medal < 0 || medal > 40) {
+      throw `勋章等级[${medal}]必须在[0, 40]之间`;
+    }
+    return medal;
+  };
+
+  // 检查认证
+  const ckOfficial = official => {
+    ckInt(official);
+    if (official < -1 || official > 1) {
+      throw `认证类型[${official}]必须在[-1, 1]之间`;
+    }
+    return official + 1;
+  };
+
+  // 检查会员
+  const ckVip = vip => {
+    ckInt(vip.vipType);
+    if (vip.vipType < 0 || vip.vipType > 2) {
+      throw `会员类型[${vip.vipType}]必须在[0, 2]之间`;
+    }
+    return vip.vipStatus === 0 ? 0 : vip.vipType;
+  };
+
+  // 加入确认关闭页面
+  const addConfirmClose = () => {
+    onbeforeunload = event => {
+      event.preventDefault();
+      return event.returnValue = false;
+    };
+  };
+
+  // 加入全局变量
+  const addProperties = (...functions) => {
+    for (const func of functions) {
+      if (window[func.name] !== undefined) {
+        throw '重复运行开奖脚本，请刷新当前网页页面后再次尝试。';
+      }
+      Object.defineProperty(window, func.name, {value: func});
+    }
+  };
+
+  // 计算页面评论区参数
+  const computeCommentInfo = () => {
+    const url = new URL(location);
+    const host = url.hostname;
+    const path = url.pathname;
+    // 检查路径
+    const ckPath = prefix => {
+      return path.length > prefix.length && path.substring(0, prefix.length) === prefix;
+    };
+    // 提取ID
+    const extId = prefix => {
+      return ckInt(+path.substring(prefix.length));
+    };
+    // 检查全局变量
+    const ckW = prop => {
+      if (prop === undefined || prop === null) {
+        throw '无法获取全局变量';
+      }
+      return prop;
+    };
+    let info;
+    if (host === 't.bilibili.com') {
+      if (ckPath('/')) {
+        const vue = document.querySelector('div.detail-card > div').__vue__.cardData;
+        info = {web: '动态', type: vue.comment_id, oid: vue.comment_oid};
+      }
+    } else if (host === 'www.bilibili.com') {
+      if (ckPath('/video/')) {
+        info = {web: '投稿视频', type: 1, oid: ckW(window.aid)};
+      } else if (ckPath('/bangumi/play/')) {
+        info = {web: '版权视频', type: 1, oid: ckW(window.aid)};
+      } else if (ckPath('/blackboard/')) {
+        info = {web: '活动', type: 4, oid: ckW(window.activityId)};
+      } else if (ckPath('/blackroom/ban/')) {
+        info = {web: '小黑屋', type: 6, oid: extId('/blackroom/ban/')};
+      } else if (ckPath('/read/cv')) {
+        info = {web: '专栏', type: 12, oid: extId('/read/cv')};
+      } else if (ckPath('/audio/au')) {
+        info = {web: '音频', type: 14, oid: extId('/audio/au')};
+      } else if (ckPath('/audio/am')) {
+        info = {web: '音频列表', type: 19, oid: extId('/audio/am')};
+      } else if (ckPath('/cheese/play/ep')) {
+        info = {web: '课程', type: 33, oid: extId('/cheese/play/ep')};
+      }
+    } else if (host === 'h.bilibili.com') {
+      if (ckPath('/')) {
+        info = {web: '相簿', type: 11, oid: extId('/')};
+      }
+    } else if (host === 'manga.bilibili.com') {
+      if (ckPath('/detail/mc')) {
+        info = {web: '漫画', type: 22, oid: extId('/detail/mc')};
+      }
+    }
+    if (info === undefined) {
+      throw '不支持当前页面';
+    }
+    url.hash = '';
+    for (const [key, value] of new URL(url).searchParams) {
+      if (key !== 'type') {
+        url.searchParams.delete(key);
+      }
+    }
+    info.url = url;
+    LOGGER.log(`[类型] %c${info.web}`, `color:${COLOR.BLUE}`);
+    LOGGER.log(`%c[url] ${info.url}`, `color:${COLOR.GRAY}`);
+    LOGGER.log(`%c[type] ${info.type}`, `color:${COLOR.GRAY}`);
+    LOGGER.log(`%c[oid] ${info.oid}`, `color:${COLOR.GRAY}`);
+    return info;
+  };
+
+  // 获取当前登录用户
+  const getUser = async () => {
+    const userRes = await $.ajax('https://api.bilibili.com/x/web-interface/nav', {
+      type: 'GET',
+      xhrFields: {withCredentials: true}
+    });
+    if (userRes.code !== 0) {
+      return undefined;
+    }
+    return userRes.data.uname;
+  };
+
+  // 获取用户与当前登录用户关系
+  const getRelation = async uid => {
+    await wait(SYS_CONFIG.API_INTERVAL);
+    const relationRes = await $.ajax('https://api.bilibili.com/x/space/acc/relation', {
+      type: 'GET',
+      data: {mid: uid},
+      xhrFields: {withCredentials: true}
+    });
+    if (relationRes.code !== 0) {
+      throw '无法获取用户关系';
+    }
+    const relation = relationRes.data.be_relation;
+    return {followed: relation.attribute !== undefined && relation.attribute !== 0 && relation.attribute !== 128, ts: relation.mtime};
+  };
+
+  // 计算单项权重
+  const computeWeights = (title, styles, weight, column = 1) => {
+    LOGGER.group(`${title}权重 (相对百分比)`);
+    let max = 0;
+    let weights = [];
+    for (const tag of styles) {
+      const w = weight[tag.key];
+      if (typeof w !== 'number' || w < 0) {
+        throw `${title}权重[${tag.key}]必须为非负数`;
+      }
+      weights.push(w);
+      max = Math.max(max, w);
+    }
+    if (max === 0) {
+      throw `${title}权重全为零`;
+    }
+    weights = weights.map(w => w / max);
+    let text = [];
+    let css = [];
+    for (let i = 0; i < weights.length; i++) {
+      const format = consoleFormat([styles[i], stylePercent(weights[i], 1)], ' ');
+      text.push(format.text);
+      css.push(...format.css);
+      if (i % column === 0) {
+        LOGGER.log(text.join('   '), ...css);
+        text = [];
+        css = [];
+      }
+    }
+    LOGGER.groupEnd();
+    return weights;
+  };
+
+  // 获取单页评论
+  const getPageComments = async (type, oid, next) => {
+    await wait(SYS_CONFIG.API_INTERVAL);
+    console.log(`%c[${G.call++}] ${next}`, `color:${COLOR.GRAY}`);
+    const pageRes = await $.ajax('https://api.bilibili.com/x/v2/reply/main', {
+      type: 'GET',
+      data: {type: type, oid: oid, next: next, mode: 2}
+    });
+    if (pageRes.code !== 0) {
+      throw '无法获取评论';
+    }
+    return [pageRes.data.cursor.is_end, pageRes.data.cursor.prev, pageRes.data.cursor.next, pageRes.data.replies ?? []];
+  };
+
+  // 保存评论
+  const saveCommentsToMap = comments => {
+    for (const [i, c] of comments.entries()) {
+      try {
+        const ts = ckUnix(c.ctime);
+        if (ts > DRAW_TIME) {
+          continue;
+        }
+        const rpid = ckInt(c.rpid);
+        const msg = ckStr(c.content.message);
+        const like = ckInt(c.like);
+        const reply = ckInt(c.count);
+        const detail = {rpid, msg, like, reply, ts};
+        const uid = ckInt(c.mid);
+        const user = G.uMap.get(uid);
+        if (user === undefined) {
+          const name = ckStr(c.member.uname);
+          const level = ckLevel(c.member.level_info.current_level);
+          const medal = ckMedal(c.member.fans_detail?.level ?? 0);
+          const official = ckOfficial(c.member.official_verify.type);
+          const vip = ckVip(c.member.vip);
+          const weight = LEVEL_WEIGHTS[level] * MEDAL_WEIGHTS[medal] * VIP_WEIGHTS[vip];
+          const details = new Map([[rpid, detail]]);
+          G.uMap.set(uid, {uid, name, level, medal, official, vip, weight, details});
+        } else {
+          user.details.set(rpid, detail);
+        }
+      } catch (e) {
+        console.warn(`[${G.call}] ${i} ${e} 跳过`);
+      }
+    }
+  };
+
+  // 加载评论
+  const loadCommentMap = async () => {
+    let [isEnd, prev, next, cs] = await getPageComments(INFO.type, INFO.oid, 0);
+    let mid = 0;
+    while (!isEnd && prev !== 0 && next !== 0 && cs.length !== 0) {
+      saveCommentsToMap(cs);
+      mid = next + ((prev - next) >> 1);
+      [isEnd, prev, next, cs] = await getPageComments(INFO.type, INFO.oid, next);
+    }
+    // 再次获取最早评论 (B站BUG 最早评论有可能被遗漏)
+    [isEnd, prev, next, cs] = await getPageComments(INFO.type, INFO.oid, mid);
+    saveCommentsToMap(cs);
+  };
+
+  // 用户概况
+  const showSummary = total => {
+    const pass = G.uList.length;
+    const fail = G.uMap.size - pass;
+    if (pass === 0) {
+      throw '不存在有抽奖资格用户';
+    }
+    LOGGER.log(`[总评论数] ${total}`);
+    LOGGER.log(`[有抽奖资格用户总数] %c${pass}`, `color:${COLOR.BLUE}`);
+    LOGGER.log(`%c[无抽奖资格用户总数] ${fail}`, `color:${COLOR.GRAY}`);
+  };
+
+  // 用户分布
+  const showDistribution = (title, styles, summary, column = 1) => {
+    LOGGER.group(`${title}分布 (有资格数, %c无资格数%c)`, `color:${COLOR.GRAY}`, '');
+    const passLen = Math.max(...summary.passes).toString().length;
+    const failLen = Math.max(...summary.fails).toString().length;
+    let text = [];
+    let css = [];
+    for (let i = 0; i < summary.passes.length; i++) {
+      const format = consoleFormat([styles[i], styleInt(summary.passes[i], passLen), styleInt(summary.fails[i], failLen, COLOR.GRAY)], ' ');
+      text.push(format.text);
+      css.push(...format.css);
+      if (i % column === 0) {
+        LOGGER.log(text.join('   '), ...css);
+        text = [];
+        css = [];
+      }
+    }
+    LOGGER.groupEnd();
+  };
+
+  // 用户映射
+  const mapToUser = user => ({
+    UID: user.uid,
+    用户名: user.name,
+    用户等级: user.level,
+    勋章等级: user.medal,
+    认证类型: user.official,
+    会员类型: user.vip,
+    累计评论数: user.details.size
+  });
+
+  // 评论映射
+  const mapToDetail = detail => ({
+    评论ID: detail.rpid,
+    评论时间: formatTime(detail.ts),
+    评论内容: detail.msg,
+    被点赞数: detail.like,
+    被评论数: detail.reply
+  });
+
+  // 用户列表
+  const showUsers = (title, list) => {
+    LOGGER.groupCollapsed(`${title}用户(${list.length})`);
+    if (list.length === 0) {
+      LOGGER.log('%cN/A', `color:${COLOR.GRAY}`);
+    } else {
+      LOGGER.table(list.map(mapToUser));
+    }
+    LOGGER.groupEnd();
+  };
+
+  // 展示用户
+  const displayUser = async user => {
+    const details = Array.from(user.details.values()).sort(comparator(detail => detail.ts, detail => detail.rpid));
+    const replyUrl = new URL(INFO.url);
+    replyUrl.hash = `reply${details[0].rpid}`;
+
+    const level = STYLE.LEVEL[user.level];
+    const medal = user.medal === 0 ? undefined : STYLE.MEDAL[user.medal];
+    const official = user.official === 0 ? undefined : STYLE.OFFICIAL[user.official];
+    const vip = user.vip === 0 ? undefined : STYLE.VIP[user.vip];
+    const uid = styleB(['UID', user.uid], '#8A8A8A');
+    const name = {text: user.name, css: 'font-weight:bold'};
+    const weight = styleB(['权重', (100 * user.weight).toFixed(1)], '#FEFEFE');
+    const prob = styleB(['概率', (100 * user.weight / G.uWeight).toFixed(6)], '#FEFEFE');
+    const format = consoleFormat([level, medal, official, vip, uid, name, weight, prob], ' ');
+    LOGGER.log(format.text, ...format.css);
+
+    if (USER_NAME !== undefined) {
+      const relation = await getRelation(user.uid);
+      if (relation.followed) {
+        LOGGER.log(`[是否关注%c${USER_NAME}%c] %c已关注 %c${formatTime(relation.ts)}`, `color:${COLOR.PINK};font-weight:bold`, '', `color:${COLOR.GREEN}`, '');
+      } else {
+        LOGGER.log(`[是否关注%c${USER_NAME}%c] %c未关注`, `color:${COLOR.PINK};font-weight:bold`, '', `color:${COLOR.RED}`);
+      }
+    }
+    LOGGER.log(`[首条评论位置链接] ${replyUrl}`);
+    LOGGER.table(details.map(mapToDetail));
+  };
+
+  // 保存文件
+  const save = (data, fileName, fileType) => {
+    const link = document.createElement('a');
+    link.download = fileName;
+    const blob = new Blob([data], {type: fileType});
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  // CSV映射
+  const mapToCSV = prop => {
+    switch (typeof prop) {
+      case 'undefined':
+        return '';
+      case 'number':
+        return `"${prop}"`;
+      case 'string':
+        return `"${prop.replaceAll('"', '""').replaceAll('\r', '\u23CE').replaceAll('\n', '\u23CE')}"`;
+      default:
+        throw `不支持格式[${typeof prop}]`;
+    }
+  };
+
+  // 保存所有评论
+  const saveComments = rows => {
+    const data = rows.map(row => row.map(mapToCSV).join(',')).join('\r\n') + '\r\n';
+    save(data, `评论_${INFO.type}_${INFO.oid}_${DRAW_TIME}.csv`, 'text/csv');
+  };
+
+  // 加权随机排序
+  const weightedRandomShuffle = () => {
+    const MAX = 0x4000;
+    const ua = new Uint32Array(MAX);
+    for (const [i, user] of G.uList.entries()) {
+      const index = i % MAX;
+      if (index === 0) {
+        window.crypto.getRandomValues(ua);
+      }
+      user.key = -Math.log((ua[index] + 1) / 0x100000001) / user.weight;
+    }
+    G.uList.sort(comparator(user => user.key));
+  };
+
+  // 统计评论
+  const countCommentMap = () => {
+    // 创建统计数组
+    const newSummary = length => ({passes: new Array(length).fill(0), fails: new Array(length).fill(0)});
+    let total = 0;
+    const level = newSummary(7);
+    const medal = newSummary(41);
+    const official = newSummary(3);
+    const vip = newSummary(3);
+    const overLimits = [];
+    const zeroWeights = [];
+    const fans = [];
+    const companies = [];
+    const rows = [];
+    for (const [uid, user] of G.uMap) {
+      if (user.medal > 0) {
+        fans.push(user);
+      }
+      if (user.official === 2) {
+        companies.push(user);
+      }
+      if (user.details.size > USER_CONFIG.MAX_REPEAT || user.weight === 0) {
+        level.fails[user.level]++;
+        medal.fails[user.medal]++;
+        official.fails[user.official]++;
+        vip.fails[user.vip]++;
+        if (user.details.size > USER_CONFIG.MAX_REPEAT) {
+          overLimits.push(user);
+        }
+        if (user.weight === 0) {
+          zeroWeights.push(user);
+        }
+      } else {
+        level.passes[user.level]++;
+        medal.passes[user.medal]++;
+        official.passes[user.official]++;
+        vip.passes[user.vip]++;
+        G.uWeight += user.weight;
+        G.uList.push(user);
+      }
+      for (const [rpid, detail] of user.details) {
+        total++;
+        if (USER_CONFIG.SAVE_COMMENTS) {
+          rows.push([detail.rpid, formatTime(detail.ts), detail.msg, detail.like, detail.reply, user.uid, user.name, user.level, user.medal, user.official, user.vip, user.details.size, user.weight]);
+        }
+      }
+    }
+    // 打乱用户顺序
+    weightedRandomShuffle();
+    // 参与人数
+    showSummary(total);
+    // 用户分布
+    showDistribution('用户等级', STYLE.LEVEL, level);
+    showDistribution('勋章等级', STYLE.MEDAL, medal, 4);
+    showDistribution('认证类型', STYLE.OFFICIAL, official);
+    showDistribution('会员类型', STYLE.VIP, vip);
+    // 特殊列表
+    overLimits.sort(comparator(user => -user.details.size, user => user.uid));
+    showUsers('超出累计评论数上限', overLimits);
+    zeroWeights.sort(comparator(user => user.uid));
+    showUsers('无权重', zeroWeights);
+    fans.sort(comparator(user => -user.medal, user => user.uid));
+    showUsers('勋章', fans);
+    companies.sort(comparator(user => user.uid));
+    showUsers('企业认证', companies);
+    // 详细评论
+    if (USER_CONFIG.SAVE_COMMENTS) {
+      rows.sort(comparator(row => row[1], row => row[0]));
+      rows.unshift(['评论ID', '评论时间', '评论内容', '被点赞数', '被评论数', 'UID', '用户名', '用户等级', '勋章等级', '认证类型', '会员类型', '累计评论数', '相对权重']);
+      saveComments(rows);
+    }
+  };
+
+  // 评论加载完成提示
+  const commentPrompt = () => {
+    if (G.done) {
+      console.warn('加载与统计评论已完成，控制台输入%c draw(n) %c(n为正整数) 并回车以随机抽取n位用户。', `color:${COLOR.ORANGE}`, '');
+      console.warn('控制台输入%c shuffle() %c并回车以重新打乱用户顺序。', `color:${COLOR.ORANGE}`, '');
+      console.warn('控制台输入%c saveLog() %c并回车以保存当前控制台所有显示内容。', `color:${COLOR.ORANGE}`, '');
+    } else {
+      console.warn('加载与统计评论未完成，请尝试控制台输入%c resume() %c并回车以继续加载评论。', `color:${COLOR.ORANGE}`, '');
+    }
+  };
+
+  // [加载与统计评论]
+  const resume = async () => {
+    await wait(0);
+    if (!G.done) {
+      // ---- 加载评论 ----
+      console.group('加载评论');
+      try {
+        await loadCommentMap();
+      } catch (e) {
+        if (e.status === 412) {
+          console.error('触发B站安全风控策略，当前IP被暂时屏蔽。%c请勿关闭或刷新本页面%c，以防丢失加载进度。', `color:${COLOR.ORANGE}`, '');
+          console.error('请更换IP或等待1小时后，控制台输入%c resume() %c并回车以继续加载评论。', `color:${COLOR.ORANGE}`, '');
+        } else {
+          console.error('发生未知错误。%c请勿关闭或刷新本页面%c，以防丢失加载进度。', `color:${COLOR.ORANGE}`, '');
+          console.error('控制台输入%c resume() %c并回车以继续加载评论。', `color:${COLOR.ORANGE}`, '');
+        }
+        throw e;
+      } finally {
+        console.groupEnd();
+      }
+      // ---- 统计评论 ----
+      LOGGER.group('统计评论');
+      countCommentMap();
+      LOGGER.groupEnd();
+      G.done = true;
+    }
+    commentPrompt();
+  };
+
+  // [保存日志]
+  const saveLog = () => {
+    save(LOG.join('\r\n') + '\r\n', `日志_${INFO.type}_${INFO.oid}_${DRAW_TIME}.txt`, 'text/plain');
+  };
+
+  // [重新打乱用户顺序]
+  const shuffle = () => {
+    if (G.done) {
+      G.dIndex = 0;
+      weightedRandomShuffle();
+      console.warn('成功重新打乱用户顺序，控制台输入%c draw(n) %c(n为正整数) 并回车以重新随机抽取n位用户。', `color:${COLOR.ORANGE}`, '');
+    } else {
+      commentPrompt();
+    }
+  };
+
+  // [随机抽取用户]
+  const draw = async (num = 1) => {
+    await wait(0);
+    if (G.done) {
+      if (!Number.isInteger(num) || num <= 0) {
+        throw `用户数量[${num}]必须为正整数`;
+      }
+      // ---- 随机抽取用户 ----
+      LOGGER.group(`随机抽取用户(${num})`);
+      let count = num;
+      try {
+        while (count > 0) {
+          if (G.dIndex === G.uList.length) {
+            throw '无剩余有资格用户';
+          }
+          LOGGER.group(`%c第${G.dIndex + 1}名`, `color:${COLOR.BLUE}`);
+          const user = G.uList[G.dIndex];
+          await displayUser(user);
+          LOGGER.groupEnd();
+          count--;
+          G.dIndex++;
+        }
+      } finally {
+        LOGGER.groupEnd();
+      }
+      console.warn(`成功随机抽取${num}位用户，控制台输入%c draw(n) %c(n为正整数) 并回车以继续随机抽取n位用户。`, `color:${COLOR.ORANGE}`, '');
+    } else {
+      commentPrompt();
+    }
+  };
+
+  // [查找用户]
+  const search = key => {
+    if (G.done) {
+      console.group(`查找用户[${key}]`);
+      let res = G.uMap.get(key);
+      if (res === undefined) {
+        for (const [uid, user] of G.uMap) {
+          if (user.name === key) {
+            res = user;
+            break;
+          }
+        }
+      }
+      if (res === undefined) {
+        console.warn(`评论区不存在用户[${key}]`);
+      } else {
+        const details = Array.from(res.details.values()).sort(comparator(detail => detail.ts, detail => detail.rpid));
+        console.table([res].map(mapToUser));
+        console.table(details.map(mapToDetail));
+      }
+      console.groupEnd();
+    } else {
+      commentPrompt();
+    }
+  };
+
+  // ---- 窗口管理 ----
+  addConfirmClose();
+  addProperties(resume, saveLog, shuffle, draw, search);
+  const G = {call: 1, done: false, uMap: new Map(), uWeight: 0, uList: [], dIndex: 0};
+
+  // ---- 当前页面 ----
+  LOGGER.group('当前页面');
+  const INFO = computeCommentInfo();
+  const USER_NAME = await getUser();
+  LOGGER.groupEnd();
+
+  // ---- 运行配置 ----
+  LOGGER.group('运行配置');
+  const DRAW_TIME = Math.trunc(Date.now() / 1000);
+  LOGGER.log(`[开奖时间] %c${formatTime(DRAW_TIME)}`, `color:${COLOR.BLUE}`);
+  if (USER_NAME === undefined) {
+    LOGGER.log('[当前登录用户] %c未登录', `color:${COLOR.GRAY};font-weight:bold`);
+  } else {
+    LOGGER.log(`[当前登录用户] %c${USER_NAME}`, `color:${COLOR.PINK};font-weight:bold`);
+  }
+  if (USER_CONFIG.SAVE_COMMENTS) {
+    LOGGER.log('[本地保存所有评论] %c保存', `color:${COLOR.GREEN}`);
+  } else {
+    LOGGER.log('[本地保存所有评论] %c不保存', `color:${COLOR.RED}`);
+  }
+  LOGGER.log(`[单用户累计评论数上限] ${USER_CONFIG.MAX_REPEAT}`);
+  LOGGER.log(`%c[API请求间隔] ${SYS_CONFIG.API_INTERVAL}毫秒`, `color:${COLOR.GRAY}`);
+  const LEVEL_WEIGHTS = computeWeights('用户等级', STYLE.LEVEL, USER_CONFIG.LEVEL_WEIGHT);
+  const MEDAL_WEIGHTS = computeWeights('勋章等级', STYLE.MEDAL, USER_CONFIG.MEDAL_WEIGHT, 4);
+  const VIP_WEIGHTS = computeWeights('会员类型', STYLE.VIP, USER_CONFIG.VIP_WEIGHT);
+  LOGGER.groupEnd();
+
+  // ---- 运行确认 ----
+  console.group('运行确认');
+  if (!confirm(`确认在 本页面评论区 (按照控制台所示配置) 开奖?`)) {
+    throw '已取消';
+  }
+  console.log('%c已确认', `color:${COLOR.GREEN}`);
+  console.groupEnd();
+
+  // ---- 加载与统计评论 ----
+  await resume();
+})();

@@ -1,0 +1,277 @@
+/**
+ * 抽奖号的日常1: 如何优雅地删除动态
+ *
+ * @author [盛百凡]{@link https://space.bilibili.com/14064125}
+ * @version 1.0.2
+ */
+(async () => {
+  'use strict';
+  console.clear();
+
+  // 用户配置
+  const USER_CONFIG = {
+    // 搜索范围(n天前所有动态)
+    DAYS_BEFORE: 90,
+    // 删除原创动态
+    DELETE_ORIGINAL: false,
+    // 删除转发动态
+    DELETE_REPOSTED: true,
+    // 转发动态原作者白名单
+    WHITE_LIST: []
+  };
+
+  // 系统配置
+  const SYS_CONFIG = {
+    // API请求间隔(毫秒)
+    API_INTERVAL: 50,
+    // 删除失败次数上限
+    FAILURE_THRESHOLD: 10
+  };
+
+  // 控制台颜色
+  const COLOR = {
+    RED: '#EE230D',
+    PINK: '#FF8CC6',
+    ORANGE: '#FF9201',
+    GREEN: '#1DB100',
+    BLUE: '#02A2FF',
+    GRAY: '#D6D5D5'
+  };
+
+  // 暂停
+  const wait = async delay => new Promise(resolve => setTimeout(resolve, delay));
+
+  // 格式化时间
+  const formatTime = unix => {
+    const d = new Date(unix * 1000);
+    const year = d.getFullYear().toString();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const date = d.getDate().toString().padStart(2, '0');
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const seconds = d.getSeconds().toString().padStart(2, '0');
+    return [`${year}-${month}-${date}`, `${hours}:${minutes}:${seconds}`];
+  };
+
+  // 获取用户信息
+  const getUser = async () => {
+    const userRes = await $.ajax('https://api.bilibili.com/x/web-interface/nav', {
+      type: 'GET',
+      xhrFields: {withCredentials: true}
+    });
+    if (userRes.code !== 0) {
+      throw '未登录';
+    }
+    return [userRes.data.mid, userRes.data.uname];
+  };
+
+  // 获取动态总数
+  const getCardsCount = async uid => {
+    const spaceNumRes = await $.ajax('https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_num_ex', {
+      type: 'GET',
+      data: {uids: uid},
+      xhrFields: {withCredentials: true}
+    });
+    if (spaceNumRes.code !== 0) {
+      throw '未登录';
+    }
+    return spaceNumRes.data.items[0].num;
+  };
+
+  // 检查用户配置
+  const checkDeleteConfig = () => {
+    if (!USER_CONFIG.DELETE_ORIGINAL && !USER_CONFIG.DELETE_REPOSTED) {
+      throw '保留所有动态';
+    }
+  };
+
+  // 获取单页动态
+  const getPageCards = async (uid, offset) => {
+    await wait(SYS_CONFIG.API_INTERVAL);
+    const dynamicRes = await $.ajax('https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history', {
+      type: 'GET',
+      data: {visitor_uid: 0, host_uid: uid, offset_dynamic_id: offset, need_top: 0, platform: 'web'}
+    });
+    if (dynamicRes.code !== 0) {
+      throw '无法获取动态列表';
+    }
+    if (dynamicRes.data.has_more === 0) {
+      return [];
+    }
+    return dynamicRes.data.cards;
+  };
+
+  // 查找接近目标时间动态
+  const findClosestCard = (cards, targetTime) => {
+    if (cards.length === 0) {
+      return [];
+    }
+    let left = 0;
+    let right = cards.length - 1;
+    while (left <= right) {
+      let mid = left + ((right - left) >> 1);
+      if (cards[mid].desc.timestamp >= targetTime) {
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+    const closest = cards[right === -1 ? 0 : right];
+    return [BigInt(closest.desc.dynamic_id_str), closest.desc.timestamp, -1 < right && right < cards.length - 1];
+  };
+
+  // 获取接近目标时间动态
+  const getClosetCard = async (uid, targetTime) => {
+    let left = 1n;
+    let [right, time, found] = findClosestCard(await getPageCards(uid, 0n), targetTime);
+    if (found || found === undefined) {
+      return right;
+    }
+    if (time <= targetTime) {
+      return 0n;
+    }
+    let count = 1;
+    while (left <= right) {
+      let mid = left + ((right - left) >> 1n);
+      console.log(`%c[${count++}] ${mid}`, `color:${COLOR.GRAY}`);
+      const [offset, time, found] = findClosestCard(await getPageCards(uid, mid), targetTime);
+      if (found) {
+        return offset;
+      }
+      if (found === undefined || time <= targetTime) {
+        left = mid + 1_000_000_000n;
+      } else {
+        right = mid - 1_000_000_000n;
+      }
+    }
+  };
+
+  // 删除动态
+  const deleteCard = async did => {
+    await wait(SYS_CONFIG.API_INTERVAL);
+    const deleteRes = await $.ajax('https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/rm_dynamic', {
+      type: 'POST',
+      data: {dynamic_id: did},
+      xhrFields: {withCredentials: true}
+    });
+    return deleteRes.code === 0;
+  };
+
+  // 删除符合条件动态
+  const deleteCards = async (uid, offset, targetTime) => {
+    let success = 0;
+    let failure = 0;
+    let keep = 0;
+    const summary = [];
+    let original = 0;
+    let reposted = 0;
+    let cards = await getPageCards(uid, offset);
+    let [prevDate] = formatTime(cards[0].desc.timestamp);
+    while (cards.length !== 0) {
+      for (const {desc} of cards) {
+        if (desc.timestamp > targetTime) {
+          throw '动态时间错误';
+        }
+        const [date, time] = formatTime(desc.timestamp);
+        if (date !== prevDate) {
+          summary.push({'日期': prevDate, '原创': original, '转发': reposted});
+          console.log(`[${prevDate}] [原创] ${original} [转发] ${reposted}`);
+          prevDate = date;
+          original = 0;
+          reposted = 0;
+        }
+        let shouldDelete = false;
+        let message = `%c[${date} ${time}] ${desc.dynamic_id_str}`;
+        if (desc.type === 8) {
+          original++;
+          message += ' 视频';
+        } else if (desc.origin === undefined) {
+          shouldDelete = USER_CONFIG.DELETE_ORIGINAL;
+          original++;
+          message += ' 原创';
+        } else {
+          shouldDelete = USER_CONFIG.DELETE_REPOSTED && !USER_CONFIG.WHITE_LIST.has(desc.origin.uid);
+          reposted++;
+          message += ' 转发';
+        }
+        if (shouldDelete) {
+          message += ' 删除';
+          if (await deleteCard(desc.dynamic_id_str)) {
+            success++;
+            message += '成功';
+          } else {
+            failure++;
+            message += '失败';
+          }
+        } else {
+          keep++;
+          message += ' 保留';
+        }
+        if (failure >= SYS_CONFIG.FAILURE_THRESHOLD) {
+          throw `删除失败次数达到上限${SYS_CONFIG.FAILURE_THRESHOLD}`;
+        }
+        console.log(message, `color:${COLOR.GRAY}`);
+      }
+      cards = await getPageCards(uid, cards[cards.length - 1].desc.dynamic_id_str);
+    }
+    summary.push({'日期': prevDate, '原创': original, '转发': reposted});
+    console.log(`[${prevDate}] [原创] ${original} [转发] ${reposted}`);
+    return [success, failure, keep, summary];
+  };
+
+  // ---- 用户信息 ----
+  console.group('用户信息');
+  const [UID, USER_NAME] = await getUser();
+  console.log(`[uid] ${UID}`);
+  console.log(`[用户名] %c${USER_NAME}`, `color:${COLOR.PINK};font-weight:bold`);
+  const INITIAL_COUNT = await getCardsCount(UID);
+  console.log(`[动态总数] ${INITIAL_COUNT}`);
+  console.groupEnd();
+
+  // ---- 运行配置 ----
+  console.group('运行配置');
+  USER_CONFIG.WHITE_LIST = new Set(USER_CONFIG.WHITE_LIST.map(n => Number(n)));
+  console.log(`%c[API请求间隔] ${SYS_CONFIG.API_INTERVAL}毫秒`, `color:${COLOR.GRAY}`);
+  console.log(`%c[删除失败上限] ${SYS_CONFIG.FAILURE_THRESHOLD}次`, `color:${COLOR.GRAY}`);
+  console.log(`[搜索范围] %c${USER_CONFIG.DAYS_BEFORE}天前所有动态`, `color:${COLOR.BLUE}`);
+  console.log(`[原创动态] %c${USER_CONFIG.DELETE_ORIGINAL ? '删除' : '保留'}`, `color:${USER_CONFIG.DELETE_ORIGINAL ? COLOR.RED : COLOR.GREEN}`);
+  console.log(`[转发动态] %c${USER_CONFIG.DELETE_REPOSTED ? '删除' : '保留'}`, `color:${USER_CONFIG.DELETE_REPOSTED ? COLOR.RED : COLOR.GREEN}`);
+  console.log(`[转发动态原作者白名单] {${Array.from(USER_CONFIG.WHITE_LIST)}}`);
+  console.groupEnd();
+
+  // ---- 运行确认 ----
+  console.group('运行确认');
+  if (!confirm(`确认删除 [${USER_NAME}] 所有满足条件的动态?`)) {
+    console.warn('已取消');
+    return;
+  }
+  console.log('%c已确认', `color:${COLOR.GREEN}`);
+  console.groupEnd();
+
+  // ---- 初始化 ----
+  console.group('初始化');
+  checkDeleteConfig();
+  const TARGET_TIME = Math.trunc(Date.now() / 1000) - 86400 * USER_CONFIG.DAYS_BEFORE;
+  const INITIAL_OFFSET = await getClosetCard(UID, TARGET_TIME);
+  if (INITIAL_OFFSET === undefined) {
+    console.warn(`${USER_CONFIG.DAYS_BEFORE}天前无动态`);
+    return;
+  }
+  console.groupEnd();
+
+  // ---- 删除动态 ----
+  console.group('删除动态');
+  const [SUCCESS_COUNT, FAILURE_COUNT, KEEP_COUNT, SUMMARY] = await deleteCards(UID, INITIAL_OFFSET, TARGET_TIME);
+  console.groupEnd();
+
+  // ---- 删除结果 ----
+  console.group('删除结果');
+  console.log(`[删除成功] ${SUCCESS_COUNT} [删除失败] ${FAILURE_COUNT}`);
+  console.log(`[保留] ${KEEP_COUNT}`);
+  console.groupEnd();
+
+  // ---- 历史统计 ----
+  console.groupCollapsed('历史统计');
+  console.table(SUMMARY);
+  console.groupEnd();
+})();

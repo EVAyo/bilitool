@@ -1,0 +1,34 @@
+# File: .github/workflows/repo-sync.yml
+name: shoyu3_DynamicRaffle-Python #action名字，随便起
+env:
+  ID: shoyu3_DynamicRaffle-Python
+  URL: https://github.com/shoyu3/DynamicRaffle-Python.git
+on:
+  schedule:
+    - cron: '1 0,15 * * *'
+  workflow_dispatch:
+  watch:
+    types: started
+  push:
+    branches: [ master ]
+  repository_dispatch:
+    types: sync #同随便起
+jobs:
+  repo-sync:
+    env:
+      PAT: ${{ secrets.PAT }} 
+      dst_key: ${{ secrets.GITEE_PRIVATE_KEY }} # 我自己同步到gitee使用，其他人可忽略
+    runs-on: ubuntu-latest
+    if: github.event.repository.owner.id == github.event.sender.id
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+      - name: sync ${ID}
+        uses: repo-sync/github-sync@v2
+        if: env.PAT
+        with:
+          source_repo: ${URL} #关键内容，对方github库信息
+          source_branch: "main"
+          destination_branch: ${ID}
+          github_token: ${{ secrets.PAT }}
