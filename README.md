@@ -177,6 +177,7 @@ ps ：需要本地有java8执行环境。
    | chargeForLove        | [充电对象的 uid]      | 给指定 up 主充电，可填写充电对象的 UID ,默认给作者充电。                   |
    | giveGift             | [false,true]         | 直播送出即将过期的礼物，默认开启，如需关闭请改为 `false`。                 |
    | upLive               | [0,送礼 up 主的 uid] | 直播送出即将过期的礼物，可填写指定 up 主的 UID ，为 `0` 时则随随机选取一个 up 主。      |
+   | silver2Coin          | [false,true]         | 银瓜子兑换硬币，默认开启，如需关闭请改为 `false`。
    | devicePlatform       | [ios,android]        | 手机端漫画签到时的平台，建议选择你设备的平台 ，默认 `ios`。              |
    | coinAddPriority      | [0,1]                | `0`：优先给热榜视频投币，`1`：优先给关注的 up 投币。                         |
    | userAgent            | 浏览器 UA            | 你的浏览器的UA。                                                           |
