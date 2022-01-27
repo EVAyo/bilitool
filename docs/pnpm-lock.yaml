@@ -7,7 +7,7 @@ specifiers:
   vuepress: ^1.9.7
   vuepress-plugin-cursor-effects: ^1.0.2
   vuepress-plugin-dynamic-title: ^1.0.0
-  vuepress-theme-vt: ^0.2.6
+  vuepress-theme-vt: ^0.3.3
 
 devDependencies:
   '@vuepress/plugin-back-to-top': 1.9.7
@@ -16,7 +16,7 @@ devDependencies:
   vuepress: 1.9.7
   vuepress-plugin-cursor-effects: 1.0.2
   vuepress-plugin-dynamic-title: 1.0.0
-  vuepress-theme-vt: 0.2.6
+  vuepress-theme-vt: 0.3.3
 
 packages:
 
@@ -2098,7 +2098,7 @@ packages:
     hasBin: true
     dependencies:
       browserslist: 4.19.1
-      caniuse-lite: 1.0.30001301
+      caniuse-lite: 1.0.30001303
       normalize-range: 0.1.2
       num2fraction: 1.2.2
       picocolors: 0.2.1
@@ -2379,8 +2379,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001301
-      electron-to-chromium: 1.4.52
+      caniuse-lite: 1.0.30001303
+      electron-to-chromium: 1.4.54
       escalade: 3.1.1
       node-releases: 2.0.1
       picocolors: 1.0.0
@@ -2551,13 +2551,13 @@ packages:
     resolution: {integrity: sha512-bsTwuIg/BZZK/vreVTYYbSWoe2F+71P7K5QGEX+pT250DZbfU1MQ5prOKpPR+LL6uWKK3KMwMCAS74QB3Um1uw==}
     dependencies:
       browserslist: 4.19.1
-      caniuse-lite: 1.0.30001301
+      caniuse-lite: 1.0.30001303
       lodash.memoize: 4.1.2
       lodash.uniq: 4.5.0
     dev: true
 
-  /caniuse-lite/1.0.30001301:
-    resolution: {integrity: sha512-csfD/GpHMqgEL3V3uIgosvh+SVIQvCh43SNu9HRbP1lnxkKm1kjDG4f32PP571JplkLjfS+mg2p1gxR7MYrrIA==}
+  /caniuse-lite/1.0.30001303:
+    resolution: {integrity: sha512-/Mqc1oESndUNszJP0kx0UaQU9kEv9nNtJ7Kn8AdA0mNnH8eR1cj0kG+NbNuC1Wq/b21eA8prhKRA3bbkjONegQ==}
     dev: true
 
   /caseless/0.12.0:
@@ -2599,7 +2599,7 @@ packages:
 
   /chokidar/2.1.8:
     resolution: {integrity: sha512-ZmZUazfOzf0Nve7duiCKD23PFSCs4JPoYyccjUFF3aQkQadqBhfzhjkwBH2mNOG9cTBwhamM37EIsIkZw3nRgg==}
-    deprecated: Chokidar 2 will break on node v14+. Upgrade to chokidar 3 with 15x less dependencies.
+    deprecated: Chokidar 2 does not receive security updates since 2019. Upgrade to chokidar 3 with 15x fewer dependencies
     dependencies:
       anymatch: 2.0.0
       async-each: 1.0.3
@@ -3510,8 +3510,8 @@ packages:
     resolution: {integrity: sha1-WQxhFWsK4vTwJVcyoViyZrxWsh0=}
     dev: true
 
-  /electron-to-chromium/1.4.52:
-    resolution: {integrity: sha512-JGkh8HEh5PnVrhU4HbpyyO0O791dVY6k7AdqfDeqbcRMeoGxtNHWT77deR2nhvbLe4dKpxjlDEvdEwrvRLGu2Q==}
+  /electron-to-chromium/1.4.54:
+    resolution: {integrity: sha512-jRAoneRdSxnpRHO0ANpnEUtQHXxlgfVjrLOnQSisw1ryjXJXvS0pJaR/v2B7S++/tRjgEDp4Sjn5nmgb6uTySw==}
     dev: true
 
   /elliptic/6.5.4:
@@ -8316,8 +8316,8 @@ packages:
       smoothscroll-polyfill: 0.4.4
     dev: true
 
-  /vuepress-theme-vt/0.2.6:
-    resolution: {integrity: sha512-eyMZFiT9OpA60Mx5a2EY33RNWJJ/fFHoaooXa6kTLT3Mo7MSZ9cK6TJ7WMqC20qD/Gzv6UJDuwAa+ftgzoLlGg==}
+  /vuepress-theme-vt/0.3.3:
+    resolution: {integrity: sha512-TlxFZK9RGFexGRQEWuzMyRj5H0gN54rk6oly97rC0zVHgiGTREGK/zz2V9C6ZPUuzU2a73jkUOd9rAERi8grZA==}
     dependencies:
       '@vuepress/plugin-active-header-links': 1.9.7
       '@vuepress/plugin-nprogress': 1.9.7
