@@ -1,8 +1,8 @@
 # File: .github/workflows/repo-sync.yml
-name: happy888888 #action名字，随便起
+name: BiliExper #action名字，随便起
 env:
-  ID: happy888888
-  URL: https://github.com/happy888888/BiliExp.git
+  ID: BiliExper
+  URL: https://github.com/MaxSecurity/BiliExper.git
 on:
   schedule:
     - cron: '1 0,15 * * *'
