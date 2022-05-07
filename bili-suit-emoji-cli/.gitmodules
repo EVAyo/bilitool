@@ -1,0 +1,3 @@
+[submodule "modules/bili-suit-emoji-core"]
+	path = modules/bili-suit-emoji-core
+	url = git@github.com:yrc123/bili-suit-emoji-core.git
