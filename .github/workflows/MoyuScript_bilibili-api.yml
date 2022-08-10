@@ -29,6 +29,6 @@ jobs:
         if: env.PAT
         with:
           source_repo: ${URL} #关键内容，对方github库信息
-          source_branch: "v6"
+          source_branch: "main"
           destination_branch: ${ID}
           github_token: ${{ secrets.PAT }}
