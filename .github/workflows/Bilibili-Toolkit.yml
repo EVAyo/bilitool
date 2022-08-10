@@ -1,7 +1,7 @@
 # File: .github/workflows/repo-sync.yml
-name: tool #action名字，随便起
+name: Bilibili-Toolkit #action名字，随便起
 env:
-  ID: tool
+  ID: Bilibili-Toolkit
   URL: https://github.com/Hsury/Bilibili-Toolkit.git
 on:
   schedule:

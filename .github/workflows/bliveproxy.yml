@@ -1,7 +1,7 @@
-name: bili-live-heart #action名字，随便起 
+name: bliveproxy #action名字，随便起 
 env:
-  ID: bili-live-heart
-  URL: https://github.com/XiaoMiku01/bili-live-heart.git
+  ID: bliveproxy
+  URL: https://github.com/xfgryujk/bliveproxy.git
   BRANCH: master
 
 on:

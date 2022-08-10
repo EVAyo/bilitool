@@ -1,8 +1,8 @@
 # File: .github/workflows/repo-sync.yml
-name: MoyuScript_bilibili-api #action名字，随便起
+name: Nemo2011_bilibili-api #action名字，随便起
 env:
-  ID: MoyuScript_bilibili-api
-  URL: https://github.com/MoyuScript/bilibili-api.git
+  ID: Nemo2011_bilibili-api
+  URL: https://github.com/Nemo2011/bilibili-api.git
 on:
   schedule:
     - cron: '1 0,15 * * *'
