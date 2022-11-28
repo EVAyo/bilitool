@@ -41,7 +41,9 @@ type Room struct {
 func NewRoom(roomId int64) *Room {
 	return &Room{RoomId: roomId, StopFlag: false, fileIO: nil, withoutFile: false}
 }
-
+func NewRoomWithBytesChan(roomId int64) *Room {
+	return &Room{RoomId: roomId, StopFlag: false, fileIO: nil, withoutFile: true, withBytesChan: true}
+}
 func (r *Room) Listen() {
 	var err error
 	if err := r.getRoomInfo(); err != nil {
@@ -57,11 +59,11 @@ func (r *Room) Listen() {
 		r.StopFlag = false
 		r.RecordLen = 0
 		r.RecordTime = 0
-		if r.withBytesChan {
-			r.BytesChan = make(chan []byte, 1024)
-		} else {
-			r.BytesChan = nil
-		}
+		//if r.withBytesChan {
+		//	r.BytesChan = make(chan []byte, 100)
+		//} else {
+		//	r.BytesChan = nil
+		//}
 		if r.LiveTime >= 0 && !r.StopFlag {
 			// 直播中
 			if err := r.getRoomInfo(); err != nil {
@@ -85,7 +87,7 @@ func (r *Room) Listen() {
 					}
 					r.StopFlag = true
 					if r.withBytesChan {
-						close(r.BytesChan)
+						//close(r.BytesChan)
 					}
 				}(f)
 			}

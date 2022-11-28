@@ -2,12 +2,13 @@ package test
 
 import (
 	bilibililivem3u8 "github.com/XiaoMiku01/bilibili-live-m3u8"
+	"log"
 	"testing"
 	"time"
 )
 
 func TestRoom(t *testing.T) {
-	room := bilibililivem3u8.NewRoom(23141761)
+	room := bilibililivem3u8.NewRoom(21696950)
 	go room.Listen()
 	select {
 	case <-time.After(time.Second * 30):
@@ -16,13 +17,30 @@ func TestRoom(t *testing.T) {
 }
 
 func TestChannel(t *testing.T) {
-	var ch = make(chan int, 10)
+	room := bilibililivem3u8.NewRoomWithBytesChan(5424)
+	room.WithBytesChan(true)
+	go room.Listen()
 	go func() {
-		for i := 0; i < 10; i++ {
-			ch <- i
+		room.BytesChan = make(chan []byte, 1024)
+		room.SetStopFunc(func(r *bilibililivem3u8.Room) bool {
+			if r.RecordLen >= 10*1024*1024 {
+				return true
+			}
+			return false
+		})
+		for room.LiveTime >= 0 {
+			//log.Println(len(room.BytesChan))
+			data, ok := <-room.BytesChan
+			log.Println(ok, len(data))
+			if !ok {
+				break
+			}
+			t.Log(len(data))
 		}
+		log.Println("end")
 	}()
-	for i := range ch {
-		t.Log(i)
+	select {
+	case <-time.After(time.Second * 30):
+
 	}
 }
