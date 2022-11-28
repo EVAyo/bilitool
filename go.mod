@@ -5,9 +5,12 @@ go 1.19
 require (
 	github.com/imroc/req/v3 v3.25.0
 	github.com/tidwall/gjson v1.14.4
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
 require (
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect

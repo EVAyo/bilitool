@@ -2,10 +2,13 @@ package main
 
 import (
 	"github.com/XiaoMiku01/bilibili-live-m3u8"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 func main() {
-	room := bilibili_live_m3u8.NewRoom(23141761)
+	var roomId = kingpin.Flag("r", "房间号").Short('r').Required().Int64()
+	kingpin.Parse()
+	room := bilibili_live_m3u8.NewRoom(*roomId)
 	//room.SetStopFunc(func(r *bilibili_live_m3u8.Room) bool {
 	//	//time.Sleep(10 * time.Second)
 	//	if r.RecordLen >= 50*1024*1024 {

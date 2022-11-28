@@ -213,7 +213,7 @@ func (r *Room) record() error {
 				}
 				continue
 			}
-			time.Sleep(time.Second * 1)
+			time.Sleep(time.Minute * 3)
 		}
 		log.Printf("%s 直播间 %d 结束直播1", r.Uname, r.RoomId)
 	}()
