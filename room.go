@@ -28,9 +28,10 @@ type Room struct {
 	M3u8Url  string
 	LastTs   int64
 
-	RecordLen  int64
-	RecordTime float32
-	BytesChan  *chan []byte
+	RecordLen     int64
+	RecordTime    float32
+	withBytesChan bool
+	BytesChan     chan []byte
 	//Bufio       *bytes.Buffer
 	fileIO      *os.File
 	withoutFile bool
@@ -56,6 +57,11 @@ func (r *Room) Listen() {
 		r.StopFlag = false
 		r.RecordLen = 0
 		r.RecordTime = 0
+		if r.withBytesChan {
+			r.BytesChan = make(chan []byte, 1024)
+		} else {
+			r.BytesChan = nil
+		}
 		if r.LiveTime >= 0 && !r.StopFlag {
 			// 直播中
 			if err := r.getRoomInfo(); err != nil {
@@ -69,10 +75,18 @@ func (r *Room) Listen() {
 			log.Printf("%s 直播间 %d 开始直播, 标题: %s", r.Uname, r.RoomId, r.Title)
 			for _, f := range r.StopFuncs {
 				go func(f func(r *Room) bool) {
+					defer func() {
+						if err := recover(); err != nil {
+							log.Printf("StopFunc panic: %v", err)
+						}
+					}()
 					for fr := f(r); !fr; fr = f(r) {
 						time.Sleep(time.Second)
 					}
 					r.StopFlag = true
+					if r.withBytesChan {
+						close(r.BytesChan)
+					}
 				}(f)
 			}
 			if r.fileIO == nil && !r.withoutFile {
@@ -111,6 +125,7 @@ func (r *Room) Listen() {
 				}
 				r.fileIO = nil
 			}
+			close(r.BytesChan)
 		} else {
 			// 未开播
 			//time.Sleep(time.Second * 5)
@@ -129,11 +144,18 @@ func (r *Room) SetFileIO(file *os.File) {
 	r.fileIO = file
 }
 
-func (r *Room) SetBytesChan(bts *chan []byte, withoutFile bool) {
+//func (r *Room) SetBytesChan(bts *chan []byte, withoutFile bool) {
+//	if withoutFile {
+//		r.withoutFile = true
+//	}
+//	r.BytesChan = bts
+//}
+
+func (r *Room) WithBytesChan(withoutFile bool) {
 	if withoutFile {
 		r.withoutFile = true
 	}
-	r.BytesChan = bts
+	r.withBytesChan = true
 }
 
 func (r *Room) getRoomInfo() error {
@@ -255,7 +277,7 @@ func (r *Room) record() error {
 				n, _ = r.fileIO.Write(bytesAll)
 			}
 			if r.BytesChan != nil {
-				*r.BytesChan <- bytesAll
+				r.BytesChan <- bytesAll
 				n = len(bytesAll)
 			}
 			r.RecordLen += int64(n)

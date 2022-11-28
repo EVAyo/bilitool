@@ -9,5 +9,5 @@ import (
 
 func TestTime(t *testing.T) {
 	time.Since(time.Now())
-	log.Println(tool.FmtDuration(time.Second * time.Duration(float32(60.10))))
+	log.Println(tool.FmtDuration(time.Second * time.Duration(float32(60))))
 }

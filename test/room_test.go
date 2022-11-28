@@ -14,3 +14,15 @@ func TestRoom(t *testing.T) {
 
 	}
 }
+
+func TestChannel(t *testing.T) {
+	var ch = make(chan int, 10)
+	go func() {
+		for i := 0; i < 10; i++ {
+			ch <- i
+		}
+	}()
+	for i := range ch {
+		t.Log(i)
+	}
+}
