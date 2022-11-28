@@ -97,14 +97,15 @@ func (r *Room) Listen() {
 			}
 			r.LastTs = 0
 			if err := r.record(); err != nil {
-				//log.Printf("录制失败: %s", err)
-				continue
+				log.Printf("录制失败: %s", err)
+				//continue
 			}
-			log.Printf("%s 直播间 %d 结束直播", r.Uname, r.RoomId)
+			log.Printf("\n%s 直播间 %d 结束直播", r.Uname, r.RoomId)
 			if r.fileIO != nil {
 				if err := r.fileIO.Close(); err != nil {
 					log.Printf("关闭文件失败: %s", err)
 				}
+				r.fileIO = nil
 			}
 		} else {
 			// 未开播
@@ -213,13 +214,14 @@ func (r *Room) record() error {
 				}
 				continue
 			}
-			time.Sleep(time.Minute * 3)
+			time.Sleep(time.Second * 30)
 		}
-		log.Printf("%s 直播间 %d 结束直播1", r.Uname, r.RoomId)
+		log.Printf("%s 直播间 %d 结束直播", r.Uname, r.RoomId)
 	}()
 	for r.LiveTime > 0 && !r.StopFlag {
 		m3u8Result, err := parse.FromURL(r.M3u8Url)
 		if err != nil {
+			log.Printf("获取直播流失败: %s", err)
 			return err
 		}
 		for _, seg := range m3u8Result.M3u8.Segments {
