@@ -23,6 +23,11 @@ func FromURL(link string) (*Result, error) {
 	link = u.String()
 	body, err := tool.Get(link)
 	if err != nil {
+		if err.Error() == "403" {
+			return nil, errors.New("403")
+		}
+	}
+	if err != nil {
 		return nil, fmt.Errorf("request m3u8 URL failed: %s", err.Error())
 	}
 	//noinspection GoUnhandledErrorResult
