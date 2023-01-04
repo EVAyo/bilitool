@@ -1,0 +1,46 @@
+name: XiaoMiku01_bilibili-live-m3u8 #action名字，随便起 
+env:
+  ID: XiaoMiku01_bilibili-live-m3u8
+  URL: https://github.com/XiaoMiku01/bilibili-live-m3u8.git
+  BRANCH: main
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/20 0-16 * * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    steps:
+    
+    - name: Init Build Dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo -E rm -rf /etc/apt/sources.list.d
+        sudo -E apt-get update -y && apt-get install -y build-essential git git-core curl wget && apt-get clean -y
+        git config --global user.name 'GitHub Actions' && git config --global user.email 'noreply@github.com'
+    # - name: Prepare #拉取私库用
+    #   run: |
+    #     mkdir -p ~/.ssh
+    #     echo -e "${{ secrets.v3_scriptskey }}" > ~/.ssh/id_rsa
+    #     chmod 600 ~/.ssh/id_rsa
+    #     ssh-keyscan gitee.com > ~/.ssh/known_hosts
+
+    - name: Clone Master
+      run: |
+        git clone -b ${{ env.BRANCH }} ${{ env.URL }} master
+    - name: Push Master
+      uses: ad-m/github-push-action@master
+      with:
+        directory: master
+        github_token: ${{ secrets.PAT }}
+        branch: ${{ env.ID }}
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        token: ${{ secrets.PAT }}
+        retain_days: 1
+        keep_minimum_runs: 3
